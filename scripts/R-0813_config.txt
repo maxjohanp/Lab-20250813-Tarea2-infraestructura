@@ -1,0 +1,173 @@
+! =============================================================================
+!  R-0813 - Cisco 7200 (IOS 15.2(4)S6) - AAA con RADIUS (NPS) y usuario local
+!  Seguridad de Redes - Tarea AAA - Maxyohan Montas (2025-0813)
+!
+!  Se pega por bloques en la consola del router (GNS3 / Solar-PuTTY), en orden.
+!  Antes de pegar, cambia cada <CLAVE-...> por la tuya (10 caracteres o mas,
+!  sin espacios ni signo de interrogacion). Las claves NO van al repositorio: en el
+!  running-config publicado aparecen como <ELIMINADO>.
+!  Las lineas que empiezan con ! son comentarios y IOS las ignora.
+!
+!  Esquema:
+!    - line con 0 y line aux 0 -> RADIUS (usuarios de AD con nivel 0, 5 o 10)
+!      y, solo si el NPS no responde, el usuario local admin0813.
+!    - line vty 0 15 -> solo SSH v2, solo el usuario local, solo desde la LAN.
+! =============================================================================
+
+! ---------- Bloque 1 - Base, interfaz y endurecimiento ----------------------
+enable
+configure terminal
+hostname R-0813
+no ip domain-lookup
+ip domain-name lab0813.local
+clock timezone AST -4 0
+service timestamps log datetime msec localtime show-timezone
+service timestamps debug datetime msec localtime show-timezone
+service password-encryption
+security passwords min-length 10
+no ip http server
+no ip http secure-server
+banner motd ^
+ACCESO RESTRINGIDO - R-0813 (LAB0813)
+Solo personal autorizado. Toda la actividad queda registrada.
+^
+interface FastEthernet0/0
+ description LAN de gestion 10.20.25.0/24 hacia SW-0813 Gi0/0
+ ip address 10.20.25.1 255.255.255.0
+ no shutdown
+exit
+! Si tu 7200 no tiene Fa0/1, las 3 lineas siguientes dan error y no pasa nada
+interface FastEthernet0/1
+ description Sin uso
+ shutdown
+end
+
+! ---------- Bloque 2 - Usuario local y clave de cada nivel -------------
+configure terminal
+username admin0813 privilege 15 secret <CLAVE-LOCAL>
+enable secret <CLAVE-ENABLE>
+enable secret level 10 <CLAVE-NIVEL10>
+enable secret level 5 <CLAVE-NIVEL5>
+end
+! Si tu IOS acepta "algorithm-type scrypt" (15.3(3)M o mas nuevo), usalo en
+! las cuatro lineas: guarda la clave como tipo 9 (scrypt) en vez de MD5. Ej.:
+!   username admin0813 privilege 15 algorithm-type scrypt secret <CLAVE-LOCAL>
+!   enable algorithm-type scrypt secret level 10 <CLAVE-NIVEL10>
+
+! ---------- Bloque 3 - Que puede hacer cada nivel ---------------------------
+configure terminal
+! Nivel 5 (GRP-NIVEL-5, soporte): consulta y diagnostico
+privilege exec level 5 show logging
+privilege exec level 5 show aaa servers
+! Nivel 10 (GRP-NIVEL-10, operador): cambios limitados en interfaces
+privilege exec level 10 show running-config
+privilege exec level 10 configure terminal
+privilege exec level 10 write memory
+privilege configure level 10 interface
+privilege interface level 10 description
+privilege interface level 10 shutdown
+! "show" vuelve al nivel 1: los show de arriba conservan su propio nivel
+privilege exec level 1 show
+end
+
+! ---------- Bloque 4 - SSH v2 solo con el usuario local ---------------------
+configure terminal
+crypto key generate rsa modulus 2048
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+ip ssh logging events
+ip access-list standard ACL-SSH
+ remark Solo la LAN de gestion abre SSH
+ permit 10.20.25.0 0.0.0.255
+ deny any log
+exit
+aaa new-model
+aaa authentication login AAA-LOCAL local
+aaa authorization exec AAA-LOCAL local
+! El IOS 15.2(4)S del 7200 solo ofrece cifrados CBC (aes128-cbc, aes256-cbc...).
+! El cliente OpenSSH de Windows no los propone por defecto: se entra con
+!   ssh -c aes128-cbc admin0813@10.20.25.1
+line vty 0 15
+ access-class ACL-SSH in
+ exec-timeout 10 0
+ login authentication AAA-LOCAL
+ authorization exec AAA-LOCAL
+ transport input ssh
+ transport output none
+end
+
+! ---------- Bloque 5 - Cliente RADIUS del NPS (SRV-AD0813) -----------------
+configure terminal
+radius-server host 10.20.25.10 auth-port 1812 acct-port 1813 key <CLAVE-RADIUS>
+radius-server timeout 5
+radius-server retransmit 2
+aaa group server radius GRP-NPS
+ server 10.20.25.10 auth-port 1812 acct-port 1813
+ ip radius source-interface FastEthernet0/0
+end
+! Sintaxis nueva (IOS 15.x reciente), equivalente al bloque anterior:
+!   radius server NPS-0813
+!    address ipv4 10.20.25.10 auth-port 1812 acct-port 1813
+!    key <CLAVE-RADIUS>
+!   aaa group server radius GRP-NPS
+!    server name NPS-0813
+!    ip radius source-interface FastEthernet0/0
+
+! ---------- Bloque 6 - AAA solo en consola y auxiliar -----------------------
+configure terminal
+aaa authentication login AAA-RADIUS group GRP-NPS local
+aaa authorization exec AAA-RADIUS group GRP-NPS local
+aaa authorization console
+aaa authentication enable default enable
+aaa accounting exec AAA-RADIUS start-stop group GRP-NPS
+! GNS3 crea el 7200 con "privilege level 15" en con 0 y aux 0: se quita para que
+! el nivel de cada sesion lo decida el NPS (usuario de AD) o el usuario local.
+line con 0
+ no privilege level 15
+ exec-timeout 5 0
+ logging synchronous
+ login authentication AAA-RADIUS
+ authorization exec AAA-RADIUS
+ accounting exec AAA-RADIUS
+exit
+! Si la imagen no tiene puerto auxiliar, las lineas de line aux 0 dan error y no pasa nada
+line aux 0
+ no privilege level 15
+ exec-timeout 5 0
+ logging synchronous
+ login authentication AAA-RADIUS
+ authorization exec AAA-RADIUS
+ accounting exec AAA-RADIUS
+ transport input none
+end
+
+! ---------- Bloque 7 - Registros de autenticacion, autorizacion y RADIUS ----
+configure terminal
+logging buffered 64000 debugging
+logging console informational
+login block-for 120 attempts 3 within 60
+login on-failure log
+login on-success log
+archive
+ log config
+  logging enable
+  logging size 200
+  notify syslog contenttype plaintext
+  hidekeys
+end
+! La depuracion no se guarda en la configuracion: activala antes de las pruebas
+debug aaa authentication
+debug aaa authorization
+debug aaa accounting
+debug radius authentication
+
+! ---------- Bloque 8 - Comprobar y guardar ----------------------------------
+terminal length 0
+show running-config | section aaa
+show running-config | section line
+show aaa servers
+show aaa method-lists all
+show login
+show ip ssh
+copy running-config startup-config
