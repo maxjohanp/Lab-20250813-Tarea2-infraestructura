@@ -1,24 +1,4 @@
-<div align="center">
-
-# AAA con RADIUS · Cisco + Active Directory (NPS)
-
-**Router y switch Cisco autenticados y autorizados contra Active Directory por RADIUS, con niveles de privilegio 0, 5 y 10, usuario local de respaldo, SSH v2 y registros**
-
-`GNS3 2.2.61` · `Cisco 7200 · IOS 15.2(4)S6` · `Cisco IOSvL2` · `Windows Server 2022` · `AD DS · DNS · NPS` · `RADIUS 1812 / 1813`
-
-</div>
-
-## Video demostrativo
-
-<!-- Para poner el video: cambia https://youtu.be/PEGA-AQUI-EL-ENLACE por el enlace real en las dos líneas de abajo. -->
-[![Ver el video demostrativo](docs/Diagramas/00-portada-video.png)](https://youtu.be/PEGA-AQUI-EL-ENLACE)
-
-<div align="center">
-
-**▶ [Ver el video demostrativo](https://youtu.be/PEGA-AQUI-EL-ENLACE)** &nbsp;·&nbsp; 📄 **[Documentación completa (PDF)](docs/Documentacion_AAA-RADIUS_2025-0813.pdf)** &nbsp;·&nbsp; [versión Word](docs/Documentacion_AAA-RADIUS_2025-0813.docx)
-
-</div>
-
+[![Tarea Semana 6 (Asignación 2)](https://img.youtube.com/vi/77oUP8Mz7-8/hqdefault.jpg)](https://www.youtube.com/watch?v=77oUP8Mz7-8)
 | | |
 |---|---|
 | **Institución** | Instituto Tecnológico de las Américas (ITLA) |
